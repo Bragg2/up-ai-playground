@@ -580,7 +580,7 @@ function drawInstruction() {
   textAlign(CENTER, CENTER);
   textStyle(BOLD);
   textSize(mobile ? min(17, width * 0.046) : min(20, width * 0.047));
-  text("张圆嘴巴，用力吹出你的泡泡", width / 2, y + (mobile ? 21 : 24));
+  text("用力吹出你的泡泡", width / 2, y + (mobile ? 21 : 24));
 
   textStyle(NORMAL);
   textSize(mobile ? min(12, width * 0.032) : min(14, width * 0.034));
