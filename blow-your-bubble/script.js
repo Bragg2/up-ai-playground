@@ -1,612 +1,777 @@
 /*
-  Blow Your Bubble - mobile friendly version
+  Blow Your Bubble
   HTML + p5.js + MediaPipe FaceMesh
 
-  Deploy note:
-  - Works on localhost or HTTPS.
-  - Cloudflare Pages gives HTTPS by default, so phone camera permissions can work.
-  - On mobile, open with Safari / Chrome. WeChat / RED built-in browsers may block camera.
+  文件结构：
+  index.html
+  style.css
+  script.js
+  bubble_wand.png
 */
 
-// -------------------- Adjustable parameters --------------------
+// ===============================
+// 可调参数区域
+// ===============================
+
 const PARAMS = {
-  cameraW: 640,
-  cameraH: 480,
+  // 嘴巴识别
+  mouthOpenThreshold: 0.018,
+  mouthRoundRatioMin: 0.26,
+  mouthRoundRatioMax: 0.78,
+  blowShrinkThreshold: 0.004,
 
-  // Mouth / blow detection
-  mouthOpenThreshold: 0.028,
-  mouthRoundThreshold: 0.34,
-  mouthNarrowThreshold: 0.42,
-  blowShrinkThreshold: 0.085,
-  bubbleSpawnCooldown: 390,
-  detectionEveryNFrames: 2,
+  // 吹泡泡冷却时间，数值越小越容易连续生成
+  bubbleSpawnCooldown: 12,
 
-  // Bubble visuals - desktop default
-  bubblesPerBlowMin: 1,
-  bubblesPerBlowMax: 3,
-  bubbleSizeMin: 58,
-  bubbleSizeMax: 145,
-  bubbleLifeMin: 3600,
-  bubbleLifeMax: 6800,
-  bubbleUpSpeedMin: 0.45,
-  bubbleUpSpeedMax: 1.35,
-  bubbleDrift: 0.85,
+  // 桌面端默认泡泡尺寸
+  bubbleSizeMin: 24,
+  bubbleSizeMax: 180,
 
-  // Wand image layout - desktop default
+  // 泡泡数量
+  bubbleCountMin: 2,
+  bubbleCountMax: 5,
+
+  // 背景
+  videoAlpha: 245,
+  backgroundBlurAlpha: 24,
+
+  // 泡泡棒
   toolImageScale: 0.45,
   toolBottomOverflow: 0.06,
-  toolRingYRatio: 0.215,
-  toolRingXRatio: 0.5,
-  toolRingRadiusRatio: 0.16,
 
-  // UI
-  videoAlpha: 245,
-  backgroundBlurAlpha: 28,
+  // 泡泡从工具圆环位置生成时的微调
+  bubbleOriginXOffset: 0,
+  bubbleOriginYOffset: 0,
+
+  // 提示文字
   instructionTop: 18,
-  showDebugHint: true,
+
+  // 音效
+  soundEnabled: true,
+  soundVolume: 0.16
 };
 
-// -------------------- Global variables --------------------
+// ===============================
+// 全局变量
+// ===============================
+
 let video;
-let wandImg;
 let faceMesh;
-let latestFace = null;
-let faceReady = false;
-let isDetecting = false;
+let faceResults = null;
+
+let bubbleWand;
 let bubbles = [];
 let ripples = [];
+
 let lastMouthArea = null;
-let lastBubbleTime = 0;
-let frameForDetection = 0;
+let cooldown = 0;
 
-let currentMouthState = {
-  isOShape: false,
-  isBlowing: false,
-  mouthX: 0,
-  mouthY: 0,
-  mouthArea: 0,
-};
+let audioCtx = null;
+let soundUnlocked = false;
 
-// MediaPipe landmark indexes
-const LM = {
+let cameraReady = false;
+
+// MediaPipe 嘴部关键点
+// FaceMesh landmark index
+const MOUTH = {
+  leftCorner: 61,
+  rightCorner: 291,
   upperLip: 13,
   lowerLip: 14,
-  leftMouth: 61,
-  rightMouth: 291,
-  leftCheek: 234,
-  rightCheek: 454,
-  chin: 152,
-  forehead: 10,
+  upperOuter: 0,
+  lowerOuter: 17
 };
 
+// ===============================
+// p5 preload
+// ===============================
+
 function preload() {
-  wandImg = loadImage("bubble_wand.png");
+  bubbleWand = loadImage("./bubble_wand.png");
 }
+
+// ===============================
+// p5 setup
+// ===============================
 
 function setup() {
-  const cnv = createCanvas(windowWidth, windowHeight);
-  cnv.parent("app");
+  createCanvas(windowWidth, windowHeight);
   pixelDensity(1);
 
-  video = createCapture({
-    video: {
-      width: PARAMS.cameraW,
-      height: PARAMS.cameraH,
-      facingMode: "user",
-    },
-    audio: false,
-  });
-
-  video.size(PARAMS.cameraW, PARAMS.cameraH);
-  video.hide();
-
-  // Important for iPhone / iPad Safari.
-  video.elt.setAttribute("playsinline", "");
-  video.elt.setAttribute("webkit-playsinline", "");
-  video.elt.muted = true;
-
+  setupCamera();
   setupFaceMesh();
+
+  // 用户第一次点击/触摸时解锁浏览器音频
+  window.addEventListener("pointerdown", unlockAudio, { once: true });
+  window.addEventListener("touchstart", unlockAudio, { once: true });
+
+  textFont("Helvetica Neue, Arial, sans-serif");
 }
 
-function draw() {
-  background(0);
+// ===============================
+// 摄像头设置
+// ===============================
 
-  drawCameraBackground();
-  updateMouthState();
-  maybeSpawnBubble();
+function setupCamera() {
+  video = createCapture(
+    {
+      video: {
+        facingMode: "user",
+        width: { ideal: 1280 },
+        height: { ideal: 720 }
+      },
+      audio: false
+    },
+    () => {
+      cameraReady = true;
+      const loading = document.getElementById("loading");
+      if (loading) loading.style.display = "none";
+    }
+  );
 
-  updateAndDrawBubbles();
-  updateAndDrawRipples();
-  drawBubbleWand();
-  drawInstruction();
-  drawDebugHint();
-
-  frameForDetection++;
+  video.size(640, 480);
+  video.hide();
 }
 
-// -------------------- Responsive layout --------------------
-function isPortrait() {
-  return height >= width;
-}
+// ===============================
+// MediaPipe FaceMesh 设置
+// ===============================
 
-function isMobileLike() {
-  return isPortrait() || width < 820;
-}
-
-function getResponsiveParams() {
-  const mobile = isMobileLike();
-  const portrait = isPortrait();
-
-  if (mobile && portrait) {
-    return {
-      // 手机竖屏：把泡泡棒放大并上移，让大圆环更接近用户嘴巴
-      toolImageScale: 0.64,
-      toolBottomOverflow: -0.07,
-      bubbleSizeMin: 48,
-      bubbleSizeMax: 118,
-      instructionTop: 14,
-      backgroundBlurAlpha: 18,
-      videoAlpha: 255,
-    };
-  }
-
-  if (mobile && !portrait) {
-    return {
-      // 手机横屏：泡泡棒不要太大，避免挡住整个脸
-      toolImageScale: 0.52,
-      toolBottomOverflow: -0.02,
-      bubbleSizeMin: 44,
-      bubbleSizeMax: 104,
-      instructionTop: 12,
-      backgroundBlurAlpha: 18,
-      videoAlpha: 255,
-    };
-  }
-
-  return {
-    // 桌面端
-    toolImageScale: PARAMS.toolImageScale,
-    toolBottomOverflow: PARAMS.toolBottomOverflow,
-    bubbleSizeMin: PARAMS.bubbleSizeMin,
-    bubbleSizeMax: PARAMS.bubbleSizeMax,
-    instructionTop: PARAMS.instructionTop,
-    backgroundBlurAlpha: PARAMS.backgroundBlurAlpha,
-    videoAlpha: PARAMS.videoAlpha,
-  };
-}
-
-function safeTopInset() {
-  // iPhone 刘海屏安全距离的简单估计。
-  // 真正的 CSS env(safe-area-inset-top) 在 canvas 里不易直接读取。
-  return isMobileLike() ? 10 : 0;
-}
-
-// -------------------- MediaPipe FaceMesh --------------------
 function setupFaceMesh() {
   faceMesh = new FaceMesh({
-    locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`,
+    locateFile: (file) => {
+      return `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`;
+    }
   });
 
   faceMesh.setOptions({
     maxNumFaces: 1,
     refineLandmarks: true,
     minDetectionConfidence: 0.5,
-    minTrackingConfidence: 0.5,
+    minTrackingConfidence: 0.5
   });
 
   faceMesh.onResults((results) => {
-    if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
-      latestFace = results.multiFaceLandmarks[0];
-      faceReady = true;
-    } else {
-      latestFace = null;
-      faceReady = false;
-    }
+    faceResults = results;
   });
 
-  setTimeout(detectFaceLoop, 800);
+  const camera = new Camera(video.elt, {
+    onFrame: async () => {
+      if (video && video.elt && video.elt.readyState >= 2) {
+        await faceMesh.send({ image: video.elt });
+      }
+    },
+    width: 640,
+    height: 480
+  });
+
+  camera.start();
 }
 
-async function detectFaceLoop() {
-  if (!video || !video.elt || !faceMesh) {
-    requestAnimationFrame(detectFaceLoop);
-    return;
-  }
+// ===============================
+// p5 draw
+// ===============================
 
-  if (
-    video.elt.readyState >= 2 &&
-    !isDetecting &&
-    frameForDetection % PARAMS.detectionEveryNFrames === 0
-  ) {
-    isDetecting = true;
-    try {
-      await faceMesh.send({ image: video.elt });
-    } catch (err) {
-      console.warn("FaceMesh detection error:", err);
-    }
-    isDetecting = false;
-  }
+function draw() {
+  background(0);
 
-  requestAnimationFrame(detectFaceLoop);
-}
-
-// -------------------- Camera layout --------------------
-function getCoverVideoRect() {
-  const vw = video.width || PARAMS.cameraW;
-  const vh = video.height || PARAMS.cameraH;
-  const scale = Math.max(width / vw, height / vh);
-  const dw = vw * scale;
-  const dh = vh * scale;
-  const dx = (width - dw) / 2;
-  const dy = (height - dh) / 2;
-  return { dx, dy, dw, dh, scale, vw, vh };
-}
-
-function drawCameraBackground() {
-  const r = getCoverVideoRect();
   const rp = getResponsiveParams();
+
+  drawCameraBackground(rp);
+  detectBlowAndSpawnBubbles(rp);
+
+  updateAndDrawBubbles();
+
+  drawBubbleWand(rp);
+  updateAndDrawRipples();
+
+  drawInstruction(rp);
+
+  if (cooldown > 0) cooldown--;
+}
+
+// ===============================
+// 响应式参数
+// ===============================
+
+function isMobileLike() {
+  return width <= 820 || /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+}
+
+function isPortrait() {
+  return height >= width;
+}
+
+function getResponsiveParams() {
+  const mobile = isMobileLike();
+  const portrait = isPortrait();
+
+  // 手机竖屏
+  if (mobile && portrait) {
+    return {
+      ...PARAMS,
+      toolImageScale: 0.64,
+      toolBottomOverflow: -0.07,
+      bubbleSizeMin: 22,
+      bubbleSizeMax: 170,
+      instructionTop: 14,
+      backgroundBlurAlpha: 18,
+      videoAlpha: 255,
+      bubbleOriginYOffset: -10
+    };
+  }
+
+  // 手机横屏
+  if (mobile && !portrait) {
+    return {
+      ...PARAMS,
+      toolImageScale: 0.52,
+      toolBottomOverflow: -0.02,
+      bubbleSizeMin: 20,
+      bubbleSizeMax: 145,
+      instructionTop: 12,
+      backgroundBlurAlpha: 20,
+      videoAlpha: 255,
+      bubbleOriginYOffset: -8
+    };
+  }
+
+  // 电脑端
+  return {
+    ...PARAMS,
+    toolImageScale: 0.45,
+    toolBottomOverflow: 0.06,
+    bubbleSizeMin: 24,
+    bubbleSizeMax: 185,
+    instructionTop: 18,
+    backgroundBlurAlpha: 26,
+    videoAlpha: 245,
+    bubbleOriginYOffset: 0
+  };
+}
+
+// ===============================
+// 摄像头背景绘制
+// ===============================
+
+function drawCameraBackground(rp) {
+  if (!video || video.width === 0 || video.height === 0) return;
+
+  const r = getCoverVideoRect();
 
   push();
   tint(255, rp.videoAlpha);
 
-  // 镜像自拍画面。
+  // 镜像自拍画面
   translate(width, 0);
   scale(-1, 1);
+
+  // 修正镜像后的位置
   image(video, width - r.dx - r.dw, r.dy, r.dw, r.dh);
+
   pop();
 
-  // 轻微暗色遮罩，保留真人画面，同时让泡泡和红色工具更明显。
+  // 轻微暗色遮罩，让泡泡更明显
   noStroke();
   fill(0, rp.backgroundBlurAlpha);
   rect(0, 0, width, height);
 }
 
-function landmarkToScreen(lm) {
-  const r = getCoverVideoRect();
+// 让摄像头画面 cover 整个屏幕
+function getCoverVideoRect() {
+  const vw = video.width || 640;
+  const vh = video.height || 480;
 
-  // MediaPipe 坐标不是镜像的；显示为自拍镜像后，需要翻转 x。
-  const x = width - (r.dx + lm.x * r.dw);
-  const y = r.dy + lm.y * r.dh;
-  return createVector(x, y);
+  const canvasRatio = width / height;
+  const videoRatio = vw / vh;
+
+  let dw, dh, dx, dy;
+
+  if (videoRatio > canvasRatio) {
+    dh = height;
+    dw = dh * videoRatio;
+    dx = (width - dw) / 2;
+    dy = 0;
+  } else {
+    dw = width;
+    dh = dw / videoRatio;
+    dx = 0;
+    dy = (height - dh) / 2;
+  }
+
+  return { dx, dy, dw, dh };
 }
 
-function landmarkToVideoPixel(lm) {
-  return createVector(lm.x * video.width, lm.y * video.height);
-}
+// ===============================
+// 嘴巴吹气检测
+// ===============================
 
-function distLandmark(a, b) {
-  return dist(a.x, a.y, b.x, b.y);
-}
-
-// -------------------- Mouth / blow detection --------------------
-function updateMouthState() {
-  currentMouthState.isOShape = false;
-  currentMouthState.isBlowing = false;
-
-  if (!faceReady || !latestFace) {
+function detectBlowAndSpawnBubbles(rp) {
+  if (!faceResults || !faceResults.multiFaceLandmarks || faceResults.multiFaceLandmarks.length === 0) {
     lastMouthArea = null;
     return;
   }
 
-  const upperLip = latestFace[LM.upperLip];
-  const lowerLip = latestFace[LM.lowerLip];
-  const leftMouth = latestFace[LM.leftMouth];
-  const rightMouth = latestFace[LM.rightMouth];
-  const leftCheek = latestFace[LM.leftCheek];
-  const rightCheek = latestFace[LM.rightCheek];
+  const landmarks = faceResults.multiFaceLandmarks[0];
 
-  const mouthH = distLandmark(upperLip, lowerLip);
-  const mouthW = distLandmark(leftMouth, rightMouth);
-  const faceW = distLandmark(leftCheek, rightCheek);
+  const left = landmarks[MOUTH.leftCorner];
+  const right = landmarks[MOUTH.rightCorner];
+  const upper = landmarks[MOUTH.upperLip];
+  const lower = landmarks[MOUTH.lowerLip];
 
-  const openRatio = mouthH / faceW;
-  const roundRatio = mouthH / max(mouthW, 0.0001);
-  const narrowRatio = mouthW / faceW;
-  const mouthArea = (mouthH * mouthW) / (faceW * faceW);
+  if (!left || !right || !upper || !lower) return;
 
-  const mouthCenter = landmarkToScreen({
-    x: (leftMouth.x + rightMouth.x + upperLip.x + lowerLip.x) / 4,
-    y: (leftMouth.y + rightMouth.y + upperLip.y + lowerLip.y) / 4,
-  });
+  const mouthWidth = distNorm(left, right);
+  const mouthHeight = distNorm(upper, lower);
+  const mouthArea = mouthWidth * mouthHeight;
 
-  const isOShape =
-    openRatio > PARAMS.mouthOpenThreshold &&
-    roundRatio > PARAMS.mouthRoundThreshold &&
-    narrowRatio < PARAMS.mouthNarrowThreshold;
+  const roundRatio = mouthHeight / max(mouthWidth, 0.0001);
 
-  let isBlowing = false;
-  if (lastMouthArea !== null && isOShape) {
-    const shrink = (lastMouthArea - mouthArea) / max(lastMouthArea, 0.0001);
-    isBlowing = shrink > PARAMS.blowShrinkThreshold;
+  const isOpen = mouthHeight > rp.mouthOpenThreshold;
+  const isRound =
+    roundRatio > rp.mouthRoundRatioMin &&
+    roundRatio < rp.mouthRoundRatioMax;
+
+  let isShrinking = false;
+
+  if (lastMouthArea !== null) {
+    const shrinkAmount = lastMouthArea - mouthArea;
+    isShrinking = shrinkAmount > rp.blowShrinkThreshold;
   }
 
-  currentMouthState = {
-    isOShape,
-    isBlowing,
-    mouthX: mouthCenter.x,
-    mouthY: mouthCenter.y,
-    mouthArea,
-    openRatio,
-    roundRatio,
-    narrowRatio,
-  };
+  lastMouthArea = lerp(lastMouthArea || mouthArea, mouthArea, 0.55);
 
-  // 平滑上一帧嘴巴面积，降低检测抖动。
-  if (lastMouthArea === null) {
-    lastMouthArea = mouthArea;
-  } else {
-    lastMouthArea = lerp(lastMouthArea, mouthArea, 0.42);
+  if (isOpen && isRound && isShrinking && cooldown <= 0) {
+    const origin = getBubbleOriginFromWand(rp);
+
+    spawnBubbles(origin.x, origin.y, rp);
+    ripples.push(new Ripple(origin.x, origin.y));
+
+    playPopSound();
+
+    cooldown = rp.bubbleSpawnCooldown;
   }
 }
 
-function maybeSpawnBubble() {
-  const now = millis();
-  if (!currentMouthState.isBlowing) return;
-  if (now - lastBubbleTime < PARAMS.bubbleSpawnCooldown) return;
+function distNorm(a, b) {
+  return dist(a.x, a.y, b.x, b.y);
+}
 
-  lastBubbleTime = now;
+// ===============================
+// 泡泡生成位置：泡泡棒圆环附近
+// ===============================
 
-  const wand = getWandLayout();
+function getBubbleOriginFromWand(rp) {
+  const toolH = height * rp.toolImageScale;
+  const toolW = toolH * (bubbleWand.width / bubbleWand.height);
 
-  // 手机端让泡泡更稳定地从泡泡棒大圆环出来；桌面端稍微参考嘴巴位置。
-  const followMouthAmount = isMobileLike() ? 0.18 : 0.35;
-  const spawnX = lerp(wand.ringX, currentMouthState.mouthX || wand.ringX, followMouthAmount);
-  const spawnY = lerp(wand.ringY, currentMouthState.mouthY || wand.ringY, followMouthAmount);
+  const x = width / 2 + rp.bubbleOriginXOffset;
 
-  const count = floor(random(PARAMS.bubblesPerBlowMin, PARAMS.bubblesPerBlowMax + 1));
-  const rp = getResponsiveParams();
+  // 这个 y 值控制泡泡从泡泡棒大圆环附近出现
+  // 不同图片圆环位置不同，可以重点调这里
+  const toolBottom = height + toolH * rp.toolBottomOverflow;
+  const toolTop = toolBottom - toolH;
+
+  const y = toolTop + toolH * 0.14 + rp.bubbleOriginYOffset;
+
+  return { x, y };
+}
+
+// ===============================
+// 生成泡泡：一次 2–5 个，不同大小
+// ===============================
+
+function spawnBubbles(originX, originY, rp) {
+  const count = floor(random(rp.bubbleCountMin, rp.bubbleCountMax + 1));
 
   for (let i = 0; i < count; i++) {
-    bubbles.push(
-      new Bubble(
-        spawnX + random(-12, 12),
-        spawnY + random(-10, 10),
-        random(rp.bubbleSizeMin, rp.bubbleSizeMax)
-      )
-    );
-  }
+    const size = getRandomBubbleSize(rp);
 
-  ripples.push(new Ripple(wand.ringX, wand.ringY, wand.ringR));
+    const offsetX = random(-34, 34);
+    const offsetY = random(-24, 18);
+
+    const b = new Bubble(
+      originX + offsetX,
+      originY + offsetY,
+      size
+    );
+
+    bubbles.push(b);
+  }
 }
 
-// -------------------- Bubble class --------------------
+// 小泡泡更多，大泡泡偶尔出现
+function getRandomBubbleSize(rp) {
+  const t = random();
+
+  if (t < 0.56) {
+    return random(rp.bubbleSizeMin, rp.bubbleSizeMin + 42);
+  } else if (t < 0.88) {
+    return random(rp.bubbleSizeMin + 46, rp.bubbleSizeMax * 0.65);
+  } else {
+    return random(rp.bubbleSizeMax * 0.7, rp.bubbleSizeMax);
+  }
+}
+
+// ===============================
+// 泡泡类
+// ===============================
+
 class Bubble {
   constructor(x, y, size) {
     this.x = x;
     this.y = y;
+
     this.baseSize = size;
-    this.size = 8;
-    this.targetSize = size;
-    this.birth = millis();
-    this.life = random(PARAMS.bubbleLifeMin, PARAMS.bubbleLifeMax);
-    this.vx = random(-0.25, 0.25);
-    this.vy = -random(PARAMS.bubbleUpSpeedMin, PARAMS.bubbleUpSpeedMax);
+    this.size = size;
+
+    // 小泡泡快，大泡泡慢，但整体都比上一版更快
+    const speedFactor = map(size, 20, 190, 1.25, 0.65, true);
+    this.vy = random(-3.5, -6.8) * speedFactor;
+
+    // 左右漂移
+    this.vx = random(-0.9, 0.9);
+
+    this.age = 0;
+    this.maxLife = random(100, 180);
+
+    this.life = 255;
+
+    this.swingAmp = random(0.7, 2.8);
+    this.swingSpeed = random(0.025, 0.065);
     this.phase = random(TWO_PI);
-    this.rot = random(TWO_PI);
-    this.rotSpeed = random(-0.004, 0.004);
-    this.crop = captureFaceTexture(size);
+
+    this.rotation = random(TWO_PI);
+    this.rotationSpeed = random(-0.018, 0.018);
+
+    // 弹出动画
+    this.popScale = 0.15;
+
+    // 从实时视频里截取一块画面作为泡泡内容
+    this.capture = null;
+    this.captureVideoPatch();
+  }
+
+  captureVideoPatch() {
+    if (!video || video.width === 0 || video.height === 0) return;
+
+    // 截取视频中心偏上的区域，比较容易包含人脸和上半身
+    const patchSize = min(video.width, video.height) * random(0.42, 0.72);
+
+    const sx = video.width / 2 - patchSize / 2 + random(-60, 60);
+    const sy = video.height * random(0.18, 0.36);
+
+    this.capture = video.get(
+      constrain(sx, 0, video.width - patchSize),
+      constrain(sy, 0, video.height - patchSize),
+      patchSize,
+      patchSize
+    );
   }
 
   update() {
-    const age = millis() - this.birth;
-    const t = constrain(age / this.life, 0, 1);
+    this.age++;
 
-    this.size = lerp(
-      this.size,
-      this.targetSize * (1 + 0.035 * sin(frameCount * 0.06 + this.phase)),
-      0.12
-    );
-
-    this.x += this.vx + sin(frameCount * 0.025 + this.phase) * PARAMS.bubbleDrift;
+    // 更快地往上漂
     this.y += this.vy;
-    this.rot += this.rotSpeed;
-    this.alpha = 255 * (1 - t);
-  }
 
-  isDead() {
-    return this.alpha <= 2 || this.y + this.size < -40;
+    // 左右轻微摆动
+    this.x += this.vx + sin(this.age * this.swingSpeed + this.phase) * this.swingAmp;
+
+    // 轻微旋转
+    this.rotation += this.rotationSpeed;
+
+    // 弹出动画：从小到大
+    this.popScale = min(1, this.popScale + 0.095);
+
+    // 呼吸感
+    this.size =
+      this.baseSize *
+      this.popScale *
+      (1 + sin(this.age * 0.06 + this.phase) * 0.045);
+
+    // 逐渐消失
+    this.life = map(this.age, 0, this.maxLife, 255, 0, true);
   }
 
   draw() {
     push();
+
     translate(this.x, this.y);
-    rotate(this.rot);
+    rotate(this.rotation);
 
+    const alpha = this.life;
     const s = this.size;
-    const a = this.alpha;
 
-    // 圆形裁切：把实时人像截成泡泡内部纹理。
-    drawingContext.save();
-    drawingContext.beginPath();
-    drawingContext.arc(0, 0, s / 2, 0, Math.PI * 2);
-    drawingContext.clip();
+    // 泡泡内部的人像纹理
+    if (this.capture) {
+      push();
+      drawingContext.save();
 
-    tint(255, a * 0.72);
-    imageMode(CENTER);
-    image(this.crop, 0, 0, s * 1.18, s * 1.18);
+      // 圆形裁切
+      drawingContext.beginPath();
+      drawingContext.arc(0, 0, s / 2, 0, Math.PI * 2);
+      drawingContext.clip();
 
-    noStroke();
-    fill(255, 255, 255, a * 0.05);
-    ellipse(-s * 0.08, -s * 0.10, s * 0.92, s * 0.92);
+      // 类似鱼眼感：内部图像稍微放大
+      tint(255, alpha * 0.72);
+      imageMode(CENTER);
+      image(this.capture, 0, 0, s * 1.22, s * 1.22);
 
-    drawingContext.restore();
-    noTint();
+      // 加一点乳白透明膜
+      noStroke();
+      fill(255, alpha * 0.08);
+      ellipse(0, 0, s, s);
 
-    // 玻璃泡泡边缘 + 彩虹薄膜。
+      drawingContext.restore();
+      pop();
+    }
+
+    // 泡泡玻璃边缘
     noFill();
-    strokeWeight(max(1.2, s * 0.018));
-    stroke(255, 255, 255, a * 0.58);
+    strokeWeight(max(1, s * 0.025));
+    stroke(255, alpha * 0.62);
     ellipse(0, 0, s, s);
 
+    // 彩虹薄膜边缘：用几层不同透明描边模拟
     strokeWeight(max(1, s * 0.012));
-    stroke(255, 110, 190, a * 0.24);
-    arc(0, 0, s * 0.96, s * 0.96, PI * 0.05, PI * 0.75);
-    stroke(95, 210, 255, a * 0.22);
-    arc(0, 0, s * 1.02, s * 1.02, PI * 0.88, PI * 1.55);
-    stroke(255, 235, 120, a * 0.20);
-    arc(0, 0, s * 0.90, s * 0.90, PI * 1.58, PI * 1.95);
+    stroke(255, 180, 220, alpha * 0.35);
+    ellipse(0, 0, s * 0.96, s * 0.96);
 
+    stroke(160, 220, 255, alpha * 0.32);
+    ellipse(0, 0, s * 0.9, s * 0.9);
+
+    stroke(255, 245, 160, alpha * 0.24);
+    ellipse(0, 0, s * 0.84, s * 0.84);
+
+    // 主要高光
     noStroke();
-    fill(255, 255, 255, a * 0.72);
-    ellipse(-s * 0.22, -s * 0.25, s * 0.16, s * 0.07);
-    fill(255, 255, 255, a * 0.42);
-    ellipse(s * 0.18, -s * 0.18, s * 0.08, s * 0.04);
+    fill(255, alpha * 0.68);
+    ellipse(-s * 0.18, -s * 0.22, s * 0.18, s * 0.08);
+
+    fill(255, alpha * 0.38);
+    ellipse(s * 0.18, s * 0.12, s * 0.08, s * 0.04);
+
+    // 外围淡淡光晕
+    noFill();
+    stroke(255, alpha * 0.16);
+    strokeWeight(max(1, s * 0.04));
+    ellipse(0, 0, s * 1.04, s * 1.04);
 
     pop();
   }
-}
 
-function captureFaceTexture(size) {
-  const g = createGraphics(size * 2, size * 2);
-  g.pixelDensity(1);
-  g.clear();
-
-  if (!faceReady || !latestFace || !video) {
-    g.background(255, 30);
-    return g;
+  isDead() {
+    return this.life <= 0 || this.y < -this.size * 2;
   }
-
-  const forehead = landmarkToVideoPixel(latestFace[LM.forehead]);
-  const chin = landmarkToVideoPixel(latestFace[LM.chin]);
-  const leftCheek = landmarkToVideoPixel(latestFace[LM.leftCheek]);
-  const rightCheek = landmarkToVideoPixel(latestFace[LM.rightCheek]);
-
-  const cx = (leftCheek.x + rightCheek.x) / 2;
-  const cy = (forehead.y + chin.y) / 2;
-  const faceW = abs(rightCheek.x - leftCheek.x) * 1.65;
-  const faceH = abs(chin.y - forehead.y) * 1.55;
-  const cropSize = max(faceW, faceH, 100);
-
-  const maxSx = max(0, video.width - cropSize);
-  const maxSy = max(0, video.height - cropSize);
-  const sx = constrain(cx - cropSize / 2, 0, maxSx);
-  const sy = constrain(cy - cropSize / 2, 0, maxSy);
-
-  // 泡泡内部也使用自拍镜像。
-  g.push();
-  g.translate(g.width, 0);
-  g.scale(-1, 1);
-  g.image(video, 0, 0, g.width, g.height, sx, sy, cropSize, cropSize);
-  g.pop();
-
-  return g;
 }
+
+// ===============================
+// 更新与绘制泡泡
+// ===============================
 
 function updateAndDrawBubbles() {
   for (let i = bubbles.length - 1; i >= 0; i--) {
     bubbles[i].update();
     bubbles[i].draw();
-    if (bubbles[i].isDead()) bubbles.splice(i, 1);
+
+    if (bubbles[i].isDead()) {
+      bubbles.splice(i, 1);
+    }
   }
 }
 
-// -------------------- Ripple feedback --------------------
+// ===============================
+// 泡泡棒绘制
+// ===============================
+
+function drawBubbleWand(rp) {
+  if (!bubbleWand) return;
+
+  const toolH = height * rp.toolImageScale;
+  const toolW = toolH * (bubbleWand.width / bubbleWand.height);
+
+  const x = width / 2;
+  const toolBottom = height + toolH * rp.toolBottomOverflow;
+  const y = toolBottom - toolH / 2;
+
+  push();
+  imageMode(CENTER);
+
+  // 检测到吹气时，泡泡棒轻微放大
+  const pulse = cooldown > rp.bubbleSpawnCooldown - 5 ? 1.035 : 1;
+
+  image(bubbleWand, x, y, toolW * pulse, toolH * pulse);
+  pop();
+}
+
+// ===============================
+// 扩散波纹
+// ===============================
+
 class Ripple {
-  constructor(x, y, startR) {
+  constructor(x, y) {
     this.x = x;
     this.y = y;
-    this.startR = startR;
-    this.birth = millis();
-    this.life = 680;
+    this.r = 8;
+    this.alpha = 180;
+    this.life = 0;
+  }
+
+  update() {
+    this.life++;
+    this.r += 5.2;
+    this.alpha *= 0.88;
   }
 
   draw() {
-    const t = constrain((millis() - this.birth) / this.life, 0, 1);
-    const r = this.startR + t * (isMobileLike() ? 70 : 105);
-    const a = 190 * (1 - t);
+    push();
     noFill();
-    stroke(255, 255, 255, a);
+    stroke(255, this.alpha);
     strokeWeight(2);
-    ellipse(this.x, this.y, r * 2, r * 2);
+    ellipse(this.x, this.y, this.r, this.r);
+
+    stroke(180, 220, 255, this.alpha * 0.45);
+    ellipse(this.x, this.y, this.r * 1.35, this.r * 1.35);
+    pop();
   }
 
   isDead() {
-    return millis() - this.birth > this.life;
+    return this.alpha < 3;
   }
 }
 
 function updateAndDrawRipples() {
   for (let i = ripples.length - 1; i >= 0; i--) {
+    ripples[i].update();
     ripples[i].draw();
-    if (ripples[i].isDead()) ripples.splice(i, 1);
+
+    if (ripples[i].isDead()) {
+      ripples.splice(i, 1);
+    }
   }
 }
 
-// -------------------- Wand image --------------------
-function getWandLayout() {
-  const rp = getResponsiveParams();
+// ===============================
+// 提示文字
+// ===============================
 
-  const toolH = height * rp.toolImageScale;
-  const toolW = toolH * (wandImg.width / wandImg.height);
-  const x = width / 2 - toolW / 2;
-  const y = height - toolH + height * rp.toolBottomOverflow;
-
-  const ringX = x + toolW * PARAMS.toolRingXRatio;
-  const ringY = y + toolH * PARAMS.toolRingYRatio;
-  const ringR = toolH * PARAMS.toolRingRadiusRatio;
-
-  return { x, y, toolW, toolH, ringX, ringY, ringR };
-}
-
-function drawBubbleWand() {
-  const w = getWandLayout();
-  const pulse = millis() - lastBubbleTime < 260 ? 1.025 : 1;
-
+function drawInstruction(rp) {
   push();
-  imageMode(CENTER);
-  translate(w.x + w.toolW / 2, w.y + w.toolH / 2);
-  scale(pulse);
-  image(wandImg, 0, 0, w.toolW, w.toolH);
-  pop();
-}
 
-// -------------------- UI --------------------
-function drawInstruction() {
-  const rp = getResponsiveParams();
-  const mobile = isMobileLike();
+  const boxW = min(width * 0.88, 520);
+  const boxH = isMobileLike() ? 58 : 62;
+  const x = width / 2;
+  const y = rp.instructionTop + boxH / 2;
 
-  const boxW = mobile ? min(width - 28, 360) : min(width - 36, 430);
-  const boxH = mobile ? 58 : 66;
-  const x = width / 2 - boxW / 2;
-  const y = rp.instructionTop + safeTopInset();
-
-  push();
-  rectMode(CORNER);
-  noStroke();
-  fill(255, 235);
-  rect(x, y, boxW, boxH, mobile ? 14 : 12);
-
-  fill(0);
-  textAlign(CENTER, CENTER);
-  textStyle(BOLD);
-  textSize(mobile ? min(17, width * 0.046) : min(20, width * 0.047));
-  text("用力吹出你的泡泡", width / 2, y + (mobile ? 21 : 24));
-
-  textStyle(NORMAL);
-  textSize(mobile ? min(12, width * 0.032) : min(14, width * 0.034));
-  text("Make an O with your mouth and blow", width / 2, y + (mobile ? 42 : 48));
-  pop();
-}
-
-function drawDebugHint() {
-  if (!PARAMS.showDebugHint) return;
-
-  push();
-  const status = !faceReady
-    ? "finding face..."
-    : currentMouthState.isBlowing
-      ? "blowing!"
-      : currentMouthState.isOShape
-        ? "O mouth detected"
-        : "make an O";
-
+  rectMode(CENTER);
   noStroke();
   fill(255, 210);
-  textAlign(LEFT, BOTTOM);
-  textSize(12);
-  text(status, 14, height - 14);
+  rect(x, y, boxW, boxH, 18);
+
+  fill(0, 220);
+  textAlign(CENTER, CENTER);
+
+  textSize(isMobileLike() ? 15 : 17);
+  text("用力吹出你的泡泡", x, y - 10);
+
+  textSize(isMobileLike() ? 11 : 12);
+  fill(0, 150);
+  text("Make an O with your mouth and blow", x, y + 13);
+
   pop();
 }
+
+// ===============================
+// 音效：Web Audio API
+// 不需要额外音频文件
+// ===============================
+
+function unlockAudio() {
+  if (!PARAMS.soundEnabled) return;
+
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+
+  if (audioCtx.state === "suspended") {
+    audioCtx.resume();
+  }
+
+  soundUnlocked = true;
+
+  // 第一次触摸时播放一个极轻的静音音，确保手机浏览器解锁音频
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+
+  gain.gain.value = 0.0001;
+
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+
+  osc.start();
+  osc.stop(audioCtx.currentTime + 0.01);
+}
+
+function playPopSound() {
+  if (!PARAMS.soundEnabled) return;
+
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+
+  if (audioCtx.state === "suspended") {
+    audioCtx.resume();
+  }
+
+  // 某些手机浏览器必须用户点击后才允许播放声音
+  if (!soundUnlocked && isMobileLike()) {
+    return;
+  }
+
+  const now = audioCtx.currentTime;
+
+  // 主音：短促 pop
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+
+  osc.type = "sine";
+  osc.frequency.setValueAtTime(random(520, 760), now);
+  osc.frequency.exponentialRampToValueAtTime(random(920, 1280), now + 0.045);
+  osc.frequency.exponentialRampToValueAtTime(random(380, 520), now + 0.13);
+
+  gain.gain.setValueAtTime(0.0001, now);
+  gain.gain.exponentialRampToValueAtTime(PARAMS.soundVolume, now + 0.012);
+  gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.14);
+
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+
+  osc.start(now);
+  osc.stop(now + 0.15);
+
+  // 第二层：轻微泡泡破裂感
+  const osc2 = audioCtx.createOscillator();
+  const gain2 = audioCtx.createGain();
+
+  osc2.type = "triangle";
+  osc2.frequency.setValueAtTime(random(180, 260), now);
+  osc2.frequency.exponentialRampToValueAtTime(random(80, 120), now + 0.1);
+
+  gain2.gain.setValueAtTime(0.0001, now);
+  gain2.gain.exponentialRampToValueAtTime(PARAMS.soundVolume * 0.45, now + 0.01);
+  gain2.gain.exponentialRampToValueAtTime(0.0001, now + 0.12);
+
+  osc2.connect(gain2);
+  gain2.connect(audioCtx.destination);
+
+  osc2.start(now);
+  osc2.stop(now + 0.13);
+}
+
+// ===============================
+// 窗口尺寸变化
+// ===============================
 
 function windowResized() {
   resizeCanvas(windowWidth, windowHeight);
