@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Blow Your Bubble</title>
+  <link rel="stylesheet" href="./style.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.4/p5.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+</head>
+<body>
+  <div id="loading">
+    <div class="loading-title">Blow Your Bubble</div>
+    <div class="loading-text">请允许摄像头权限<br />Please allow camera access</div>
+  </div>
+
+  <button id="soundButton" type="button">
+    🔊 开启音效<br />Tap to enable sound
+  </button>
+
+  <div id="debugText"></div>
+
+  <script src="./script.js"></script>
+</body>
+</html>
