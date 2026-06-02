@@ -8,6 +8,7 @@ body {
   height: 100%;
   font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
   touch-action: none;
+  overscroll-behavior: none;
 }
 
 canvas {
@@ -42,6 +43,13 @@ canvas {
   opacity: 0.72;
 }
 
+.loading-note {
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  opacity: 0.48;
+}
+
 @media (max-width: 768px) {
   .loading-title {
     font-size: 24px;
@@ -50,4 +58,33 @@ canvas {
   .loading-text {
     font-size: 14px;
   }
+
+  .loading-note {
+    font-size: 11px;
+  }
+}
+
+
+#tapStart {
+  position: fixed;
+  left: 50%;
+  bottom: 22px;
+  transform: translateX(-50%);
+  z-index: 20;
+  padding: 10px 16px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.88);
+  color: #000;
+  font-size: 13px;
+  line-height: 1.3;
+  text-align: center;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.22);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+#tapStart small {
+  display: block;
+  font-size: 11px;
+  opacity: 0.58;
 }

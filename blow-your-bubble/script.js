@@ -21,7 +21,7 @@ const PARAMS = {
   blowShrinkThreshold: 0.004,
 
   // 吹泡泡冷却时间，数值越小越容易连续生成
-  bubbleSpawnCooldown: 12,
+  bubbleSpawnCooldown: 9,
 
   // 桌面端默认泡泡尺寸
   bubbleSizeMin: 24,
@@ -29,7 +29,7 @@ const PARAMS = {
 
   // 泡泡数量
   bubbleCountMin: 2,
-  bubbleCountMax: 5,
+  bubbleCountMax: 6,
 
   // 背景
   videoAlpha: 245,
@@ -48,7 +48,7 @@ const PARAMS = {
 
   // 音效
   soundEnabled: true,
-  soundVolume: 0.16
+  soundVolume: 0.32
 };
 
 // ===============================
@@ -104,6 +104,7 @@ function setup() {
   // 用户第一次点击/触摸时解锁浏览器音频
   window.addEventListener("pointerdown", unlockAudio, { once: true });
   window.addEventListener("touchstart", unlockAudio, { once: true });
+  document.addEventListener("click", unlockAudio, { once: true });
 
   textFont("Helvetica Neue, Arial, sans-serif");
 }
@@ -213,7 +214,7 @@ function getResponsiveParams() {
       toolImageScale: 0.64,
       toolBottomOverflow: -0.07,
       bubbleSizeMin: 22,
-      bubbleSizeMax: 170,
+      bubbleSizeMax: 190,
       instructionTop: 14,
       backgroundBlurAlpha: 18,
       videoAlpha: 255,
@@ -228,7 +229,7 @@ function getResponsiveParams() {
       toolImageScale: 0.52,
       toolBottomOverflow: -0.02,
       bubbleSizeMin: 20,
-      bubbleSizeMax: 145,
+      bubbleSizeMax: 165,
       instructionTop: 12,
       backgroundBlurAlpha: 20,
       videoAlpha: 255,
@@ -242,7 +243,7 @@ function getResponsiveParams() {
     toolImageScale: 0.45,
     toolBottomOverflow: 0.06,
     bubbleSizeMin: 24,
-    bubbleSizeMax: 185,
+    bubbleSizeMax: 205,
     instructionTop: 18,
     backgroundBlurAlpha: 26,
     videoAlpha: 245,
@@ -425,15 +426,18 @@ class Bubble {
     this.baseSize = size;
     this.size = size;
 
-    // 小泡泡快，大泡泡慢，但整体都比上一版更快
-    const speedFactor = map(size, 20, 190, 1.25, 0.65, true);
-    this.vy = random(-3.5, -6.8) * speedFactor;
+    // 快速上飘：小泡泡更快，大泡泡稍慢，但整体速度明显加快
+    const speedFactor = map(size, 20, 210, 1.35, 0.78, true);
+    this.vy = random(-8.0, -14.0) * speedFactor;
+
+    // 轻微向上的加速度，让泡泡离开嘴巴后越来越快
+    this.ay = random(-0.015, -0.04);
 
     // 左右漂移
-    this.vx = random(-0.9, 0.9);
+    this.vx = random(-1.3, 1.3);
 
     this.age = 0;
-    this.maxLife = random(100, 180);
+    this.maxLife = random(70, 125);
 
     this.life = 255;
 
@@ -472,7 +476,8 @@ class Bubble {
   update() {
     this.age++;
 
-    // 更快地往上漂
+    // 更快地往上漂，并带一点上冲感
+    this.vy += this.ay;
     this.y += this.vy;
 
     // 左右轻微摆动
@@ -673,7 +678,7 @@ function drawInstruction(rp) {
   textAlign(CENTER, CENTER);
 
   textSize(isMobileLike() ? 15 : 17);
-  text("用力吹出你的泡泡", x, y - 10);
+  text("张圆嘴巴，用力吹出你的泡泡", x, y - 10);
 
   textSize(isMobileLike() ? 11 : 12);
   fill(0, 150);
@@ -700,17 +705,21 @@ function unlockAudio() {
 
   soundUnlocked = true;
 
-  // 第一次触摸时播放一个极轻的静音音，确保手机浏览器解锁音频
+  const tapStart = document.getElementById("tapStart");
+  if (tapStart) tapStart.style.display = "none";
+
+  // 第一次触摸时播放一个很轻的确认音，确保手机浏览器解锁音频
   const osc = audioCtx.createOscillator();
   const gain = audioCtx.createGain();
 
-  gain.gain.value = 0.0001;
+  gain.gain.value = PARAMS.soundVolume * 0.45;
+  osc.frequency.value = 660;
 
   osc.connect(gain);
   gain.connect(audioCtx.destination);
 
   osc.start();
-  osc.stop(audioCtx.currentTime + 0.01);
+  osc.stop(audioCtx.currentTime + 0.055);
 }
 
 function playPopSound() {
@@ -767,6 +776,33 @@ function playPopSound() {
 
   osc2.start(now);
   osc2.stop(now + 0.13);
+
+  // 第三层：非常短的噗声噪音，让弹出感更明显
+  const bufferSize = Math.floor(audioCtx.sampleRate * 0.05);
+  const noiseBuffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+  const data = noiseBuffer.getChannelData(0);
+  for (let i = 0; i < bufferSize; i++) {
+    data[i] = (Math.random() * 2 - 1) * (1 - i / bufferSize);
+  }
+
+  const noise = audioCtx.createBufferSource();
+  const noiseGain = audioCtx.createGain();
+  const filter = audioCtx.createBiquadFilter();
+
+  filter.type = "highpass";
+  filter.frequency.setValueAtTime(900, now);
+
+  noise.buffer = noiseBuffer;
+  noiseGain.gain.setValueAtTime(PARAMS.soundVolume * 0.75, now);
+  noiseGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.05);
+
+  noise.connect(filter);
+  filter.connect(noiseGain);
+  noiseGain.connect(audioCtx.destination);
+
+  noise.start(now);
+  noise.stop(now + 0.052);
+
 }
 
 // ===============================
