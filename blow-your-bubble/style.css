@@ -8,7 +8,6 @@ body {
   height: 100%;
   font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
   touch-action: none;
-  overscroll-behavior: none;
 }
 
 canvas {
@@ -20,7 +19,7 @@ canvas {
 #loading {
   position: fixed;
   inset: 0;
-  z-index: 10;
+  z-index: 30;
   background: #000;
   color: #fff;
   display: flex;
@@ -30,6 +29,7 @@ canvas {
   gap: 14px;
   text-align: center;
   letter-spacing: 0.02em;
+  pointer-events: none;
 }
 
 .loading-title {
@@ -43,48 +43,44 @@ canvas {
   opacity: 0.72;
 }
 
-.loading-note {
-  margin-top: 8px;
-  font-size: 12px;
-  line-height: 1.5;
-  opacity: 0.48;
-}
-
-@media (max-width: 768px) {
-  .loading-title {
-    font-size: 24px;
-  }
-
-  .loading-text {
-    font-size: 14px;
-  }
-
-  .loading-note {
-    font-size: 11px;
-  }
-}
-
-
-#tapStart {
+#soundButton {
   position: fixed;
   left: 50%;
   bottom: 22px;
   transform: translateX(-50%);
-  z-index: 20;
-  padding: 10px 16px;
+  z-index: 40;
+  border: 1px solid rgba(0, 0, 0, 0.18);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.88);
+  background: rgba(255, 255, 255, 0.92);
   color: #000;
-  font-size: 13px;
-  line-height: 1.3;
-  text-align: center;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.22);
-  user-select: none;
-  -webkit-user-select: none;
+  padding: 10px 18px;
+  font-size: 14px;
+  line-height: 1.25;
+  font-weight: 700;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.28);
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
 
-#tapStart small {
-  display: block;
+#soundButton.enabled {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.4s ease;
+}
+
+#debugText {
+  position: fixed;
+  left: 10px;
+  bottom: 10px;
+  z-index: 35;
+  color: rgba(255,255,255,0.6);
   font-size: 11px;
-  opacity: 0.58;
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .loading-title { font-size: 24px; }
+  .loading-text { font-size: 14px; }
+  #soundButton { bottom: 18px; font-size: 13px; padding: 9px 16px; }
 }
