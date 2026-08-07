@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f5f2eb" />
+    <title>雨窗画写</title>
+    <link rel="stylesheet" href="./styles.css?v=20260807d" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="app-card">
+        <input id="base-input" type="file" accept="image/*" hidden />
+        <input id="overlay-input" type="file" accept="image/*" hidden />
+
+        <div class="sr-only" aria-live="polite">
+          <span id="status-text">请先上传背景图。</span>
+        </div>
+
+        <section class="preview-card">
+          <div class="canvas-frame">
+            <canvas id="preview-canvas" width="1200" height="1600"></canvas>
+            <button id="preview-upload-trigger" class="preview-overlay" type="button">
+              <span>点击上传背景图</span>
+            </button>
+          </div>
+        </section>
+
+        <section class="toolbar-row">
+          <div class="toolbar-group">
+            <button id="undo-button" class="toolbar-button" type="button">
+              <span class="button-inner">
+                <span class="icon-svg" aria-hidden="true">
+                  <svg viewBox="0 0 24 24">
+                    <path d="M10 7L5 12l5 5"></path>
+                    <path d="M19 12H7"></path>
+                    <path d="M11 7h4a5 5 0 1 1 0 10h-2"></path>
+                  </svg>
+                </span>
+                <span>撤销</span>
+              </span>
+            </button>
+
+            <button id="redo-button" class="toolbar-button" type="button">
+              <span class="button-inner">
+                <span class="icon-svg" aria-hidden="true">
+                  <svg viewBox="0 0 24 24">
+                    <path d="M14 7l5 5-5 5"></path>
+                    <path d="M5 12h12"></path>
+                    <path d="M13 7H9a5 5 0 0 0 0 10h2"></path>
+                  </svg>
+                </span>
+                <span>重做</span>
+              </span>
+            </button>
+          </div>
+
+          <button id="clear-button" class="toolbar-button clear-button" type="button">
+            <span class="button-inner">
+              <span class="icon-svg" aria-hidden="true">
+                <svg viewBox="0 0 24 24">
+                  <path d="M5 7h14"></path>
+                  <path d="M9 7V5h6v2"></path>
+                  <path d="M8 7l1 12h6l1-12"></path>
+                </svg>
+              </span>
+              <span>清空</span>
+            </span>
+          </button>
+        </section>
+
+        <section class="control-section">
+          <div class="segment-row">
+            <button class="segment-button is-active" data-mode="photo" type="button">素材图</button>
+            <button class="segment-button" data-mode="brush" type="button">画笔</button>
+            <button class="segment-button" data-mode="text" type="button">文字</button>
+          </div>
+
+          <div class="panel-stack">
+            <section class="control-panel is-active" data-mode-panel="photo">
+              <button id="overlay-upload-button" class="soft-action-button" type="button">
+                <span class="button-inner">
+                  <span class="icon-svg" aria-hidden="true">
+                    <svg viewBox="0 0 24 24">
+                      <path d="M12 16V5"></path>
+                      <path d="M8 9l4-4 4 4"></path>
+                      <path d="M5 19h14"></path>
+                    </svg>
+                  </span>
+                  <span id="overlay-trigger-text">上传素材图</span>
+                </span>
+              </button>
+
+              <label class="field-block">
+                <div class="field-head">
+                  <span>素材大小</span>
+                  <output id="photo-size-value">50%</output>
+                </div>
+                <input id="photo-size" type="range" min="20" max="180" value="50" />
+              </label>
+            </section>
+
+            <section class="control-panel" data-mode-panel="brush">
+              <label class="field-block">
+                <div class="field-head">
+                  <span>画笔大小</span>
+                  <output id="brush-size-value">12px</output>
+                </div>
+                <input id="brush-size" type="range" min="2" max="40" value="12" />
+              </label>
+            </section>
+
+            <section class="control-panel" data-mode-panel="text">
+              <label class="field-block">
+                <span class="field-label">输入文字</span>
+                <textarea id="text-input" rows="3"></textarea>
+              </label>
+
+              <label class="field-block">
+                <div class="field-head">
+                  <span>文字大小</span>
+                  <output id="text-size-value">48px</output>
+                </div>
+                <input id="text-size" type="range" min="20" max="120" value="48" />
+              </label>
+            </section>
+          </div>
+        </section>
+
+        <section class="control-section">
+          <div class="segment-row">
+            <button class="segment-button is-active" data-layer="top" type="button">顶图</button>
+            <button class="segment-button" data-layer="bottom" type="button">底图</button>
+            <button class="segment-button" data-layer="rain" type="button">雨滴层</button>
+          </div>
+
+          <div class="panel-stack">
+            <section class="control-panel is-active" data-layer-panel="top">
+              <label class="field-block">
+                <div class="field-head">
+                  <span>顶图模糊</span>
+                  <output id="top-blur-value">12px</output>
+                </div>
+                <input id="top-blur" type="range" min="0" max="24" value="12" />
+              </label>
+
+              <label class="field-block">
+                <div class="field-head">
+                  <span>顶图透明度</span>
+                  <output id="top-opacity-value">80%</output>
+                </div>
+                <input id="top-opacity" type="range" min="0" max="100" value="80" />
+              </label>
+            </section>
+
+            <section class="control-panel" data-layer-panel="bottom">
+              <label class="field-block">
+                <div class="field-head">
+                  <span>底图模糊</span>
+                  <output id="base-blur-value">24px</output>
+                </div>
+                <input id="base-blur" type="range" min="0" max="40" value="24" />
+              </label>
+
+              <label class="field-block">
+                <div class="field-head">
+                  <span>底图透明度</span>
+                  <output id="base-opacity-value">70%</output>
+                </div>
+                <input id="base-opacity" type="range" min="0" max="100" value="70" />
+              </label>
+            </section>
+
+            <section class="control-panel" data-layer-panel="rain">
+              <label class="check-row">
+                <span>启用雨滴 A</span>
+                <input id="use-rain-a" type="checkbox" checked />
+              </label>
+
+              <label class="field-block">
+                <div class="field-head">
+                  <span>雨滴 A 透明度</span>
+                  <output id="rain-a-opacity-value">67%</output>
+                </div>
+                <input id="rain-a-opacity" type="range" min="0" max="100" value="67" />
+              </label>
+
+              <label class="check-row">
+                <span>启用雨滴 B</span>
+                <input id="use-rain-b" type="checkbox" checked />
+              </label>
+
+              <label class="field-block">
+                <div class="field-head">
+                  <span>雨滴 B 透明度</span>
+                  <output id="rain-b-opacity-value">100%</output>
+                </div>
+                <input id="rain-b-opacity" type="range" min="0" max="100" value="100" />
+              </label>
+            </section>
+          </div>
+        </section>
+
+        <footer class="footer-row">
+          <button id="download-button" class="download-button" type="button">
+            <span class="button-inner">
+              <span class="icon-svg" aria-hidden="true">
+                <svg viewBox="0 0 24 24">
+                  <path d="M12 5v10"></path>
+                  <path d="M8 12l4 4 4-4"></path>
+                  <path d="M5 19h14"></path>
+                </svg>
+              </span>
+              <span>导出 PNG</span>
+            </span>
+          </button>
+        </footer>
+      </section>
+    </main>
+
+    <script type="module" src="./app.js?v=20260807d"></script>
+  </body>
+</html>
