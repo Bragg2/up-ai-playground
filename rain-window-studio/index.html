@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#f5f2eb" />
     <title>雨窗画写</title>
-    <link rel="stylesheet" href="./styles.css?v=20260807d" />
+    <link rel="stylesheet" href="./styles.css?v=20260807f" />
   </head>
   <body>
     <main class="app-shell">
@@ -26,15 +26,29 @@
           </div>
         </section>
 
+        <section class="preview-action-row">
+          <button id="replace-background-button" class="soft-action-button preview-action-button" type="button">
+            <span class="button-inner">
+              <span class="icon-svg" aria-hidden="true">
+                <svg viewBox="0 0 24 24">
+                  <path d="M12 16V5"></path>
+                  <path d="M8 9l4-4 4 4"></path>
+                  <path d="M5 19h14"></path>
+                </svg>
+              </span>
+              <span>更换背景图</span>
+            </span>
+          </button>
+        </section>
+
         <section class="toolbar-row">
           <div class="toolbar-group">
             <button id="undo-button" class="toolbar-button" type="button">
               <span class="button-inner">
                 <span class="icon-svg" aria-hidden="true">
                   <svg viewBox="0 0 24 24">
-                    <path d="M10 7L5 12l5 5"></path>
-                    <path d="M19 12H7"></path>
-                    <path d="M11 7h4a5 5 0 1 1 0 10h-2"></path>
+                    <path d="M9 14L4 9l5-5"></path>
+                    <path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5v0a5.5 5.5 0 0 1-5.5 5.5H11"></path>
                   </svg>
                 </span>
                 <span>撤销</span>
@@ -45,9 +59,8 @@
               <span class="button-inner">
                 <span class="icon-svg" aria-hidden="true">
                   <svg viewBox="0 0 24 24">
-                    <path d="M14 7l5 5-5 5"></path>
-                    <path d="M5 12h12"></path>
-                    <path d="M13 7H9a5 5 0 0 0 0 10h2"></path>
+                    <path d="M15 14l5-5-5-5"></path>
+                    <path d="M20 9H9.5A5.5 5.5 0 0 0 4 14.5v0A5.5 5.5 0 0 0 9.5 20H13"></path>
                   </svg>
                 </span>
                 <span>重做</span>
@@ -58,10 +71,9 @@
           <button id="clear-button" class="toolbar-button clear-button" type="button">
             <span class="button-inner">
               <span class="icon-svg" aria-hidden="true">
-                <svg viewBox="0 0 24 24">
-                  <path d="M5 7h14"></path>
-                  <path d="M9 7V5h6v2"></path>
-                  <path d="M8 7l1 12h6l1-12"></path>
+                <svg style="stroke: #d9534f" viewBox="0 0 24 24">
+                  <path d="M3 6h18"></path>
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
                 </svg>
               </span>
               <span>清空</span>
@@ -139,9 +151,9 @@
               <label class="field-block">
                 <div class="field-head">
                   <span>顶图模糊</span>
-                  <output id="top-blur-value">12px</output>
+                  <output id="top-blur-value">4px</output>
                 </div>
-                <input id="top-blur" type="range" min="0" max="24" value="12" />
+                <input id="top-blur" type="range" min="0" max="20" value="4" />
               </label>
 
               <label class="field-block">
@@ -157,9 +169,9 @@
               <label class="field-block">
                 <div class="field-head">
                   <span>底图模糊</span>
-                  <output id="base-blur-value">24px</output>
+                  <output id="base-blur-value">18px</output>
                 </div>
-                <input id="base-blur" type="range" min="0" max="40" value="24" />
+                <input id="base-blur" type="range" min="0" max="40" value="18" />
               </label>
 
               <label class="field-block">
@@ -201,7 +213,6 @@
           </div>
         </section>
 
-        
         <footer class="footer-row">
           <button id="download-button" class="download-button" type="button">
             <span class="button-inner">
@@ -219,6 +230,6 @@
       </section>
     </main>
 
-    <script type="module" src="./app.js?v=20260807d"></script>
+    <script type="module" src="./app.js?v=20260807f"></script>
   </body>
 </html>
