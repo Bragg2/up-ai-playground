@@ -61,6 +61,11 @@ const outputs = Array.from(document.querySelectorAll("output")).reduce((map, nod
 }, {});
 
 const previewContext = controls.previewCanvas.getContext("2d");
+const BACKGROUND_COLOR = {
+  r: 248,
+  g: 244,
+  b: 237,
+};
 
 function setStatus(message) {
   controls.statusText.textContent = message;
@@ -110,8 +115,128 @@ function createCanvas(width, height) {
   return canvas;
 }
 
+function canvasToBlob(canvas, type = "image/png", quality) {
+  if (typeof canvas.toBlob === "function") {
+    return new Promise((resolve, reject) => {
+      canvas.toBlob((blob) => {
+        if (blob) {
+          resolve(blob);
+          return;
+        }
+
+        reject(new Error("Canvas export failed."));
+      }, type, quality);
+    });
+  }
+
+  return fetch(canvas.toDataURL(type, quality)).then((response) => response.blob());
+}
+
+function buildExportFileName() {
+  const date = new Date();
+  const stamp = [
+    date.getFullYear(),
+    `${date.getMonth() + 1}`.padStart(2, "0"),
+    `${date.getDate()}`.padStart(2, "0"),
+  ].join("");
+
+  return `雨窗画写效果图-${stamp}.png`;
+}
+
+function isTouchDevice() {
+  return (
+    navigator.maxTouchPoints > 0 ||
+    window.matchMedia("(pointer: coarse)").matches ||
+    "ontouchstart" in window
+  );
+}
+
+async function tryShareImage(blob, fileName) {
+  if (typeof navigator.share !== "function" || typeof File !== "function") {
+    return "unsupported";
+  }
+
+  const file = new File([blob], fileName, {
+    type: blob.type || "image/png",
+    lastModified: Date.now(),
+  });
+  const payload = {
+    files: [file],
+    title: "雨窗画写效果图",
+  };
+
+  if (typeof navigator.canShare === "function") {
+    try {
+      if (!navigator.canShare(payload)) {
+        return "unsupported";
+      }
+    } catch (error) {
+      console.error(error);
+      return "unsupported";
+    }
+  }
+
+  try {
+    await navigator.share(payload);
+    return "shared";
+  } catch (error) {
+    if (error?.name === "AbortError") {
+      return "cancelled";
+    }
+
+    console.error(error);
+    return "failed";
+  }
+}
+
+function triggerBlobDownload(blob, fileName) {
+  let url = null;
+
+  try {
+    url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = fileName;
+    link.target = "_blank";
+    link.rel = "noopener";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
+    return true;
+  } catch (error) {
+    console.error(error);
+
+    if (url) {
+      URL.revokeObjectURL(url);
+    }
+
+    return false;
+  }
+}
+
+function openBlobPreview(blob) {
+  const url = URL.createObjectURL(blob);
+  const previewWindow = window.open(url, "_blank", "noopener");
+  window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
+  return Boolean(previewWindow);
+}
+
 function clampChannel(value) {
   return Math.max(0, Math.min(255, value));
+}
+
+function buildSolidImageData(width, height, color) {
+  const imageData = new ImageData(width, height);
+
+  for (let i = 0; i < imageData.data.length; i += 4) {
+    imageData.data[i] = color.r;
+    imageData.data[i + 1] = color.g;
+    imageData.data[i + 2] = color.b;
+    imageData.data[i + 3] = 255;
+  }
+
+  return imageData;
 }
 
 function drawImageCover(ctx, image, destinationWidth, destinationHeight, trim = 0) {
@@ -149,32 +274,62 @@ function buildBlurredImageData(image, width, height, blurPx) {
   return ctx.getImageData(0, 0, width, height);
 }
 
-function divideBlend(base, blend) {
-  if (blend <= 0) {
-    return 255;
-  }
-  return clampChannel((base * 255) / blend);
+function screenBlend(base, blend) {
+  return clampChannel(255 - ((255 - base) * (255 - blend)) / 255);
 }
 
-function colorDodge(base, blend) {
-  if (blend >= 255) {
-    return 255;
+function softLightBlend(base, blend) {
+  const baseNorm = base / 255;
+  const blendNorm = blend / 255;
+  let result = 0;
+
+  if (blendNorm <= 0.5) {
+    result = baseNorm - (1 - 2 * blendNorm) * baseNorm * (1 - baseNorm);
+  } else {
+    const g =
+      baseNorm <= 0.25
+        ? ((16 * baseNorm - 12) * baseNorm + 4) * baseNorm
+        : Math.sqrt(baseNorm);
+    result = baseNorm + (2 * blendNorm - 1) * (g - baseNorm);
   }
-  return clampChannel((base * 255) / (255 - blend));
+
+  return clampChannel(result * 255);
 }
 
-function colorBurn(base, blend) {
-  if (blend <= 0) {
-    return 0;
+function blendNormal(baseData, layerData, opacity) {
+  const base = baseData.data;
+  const layer = layerData.data;
+  const layerOpacity = Math.max(0, Math.min(1, opacity));
+
+  for (let i = 0; i < base.length; i += 4) {
+    const alpha = layerOpacity * (layer[i + 3] / 255);
+    if (alpha <= 0) {
+      continue;
+    }
+
+    base[i] = clampChannel(base[i] * (1 - alpha) + layer[i] * alpha);
+    base[i + 1] = clampChannel(base[i + 1] * (1 - alpha) + layer[i + 1] * alpha);
+    base[i + 2] = clampChannel(base[i + 2] * (1 - alpha) + layer[i + 2] * alpha);
+    base[i + 3] = 255;
   }
-  return clampChannel(255 - ((255 - base) * 255) / blend);
 }
 
-function vividLightBlend(base, blend) {
-  if (blend < 128) {
-    return colorBurn(base, blend * 2);
+function applyMaskedReveal(baseData, revealData, maskData) {
+  const base = baseData.data;
+  const reveal = revealData.data;
+  const mask = maskData.data;
+
+  for (let i = 0; i < base.length; i += 4) {
+    const alpha = mask[i + 3] / 255;
+    if (alpha <= 0) {
+      continue;
+    }
+
+    base[i] = clampChannel(base[i] * (1 - alpha) + reveal[i] * alpha);
+    base[i + 1] = clampChannel(base[i + 1] * (1 - alpha) + reveal[i + 1] * alpha);
+    base[i + 2] = clampChannel(base[i + 2] * (1 - alpha) + reveal[i + 2] * alpha);
+    base[i + 3] = 255;
   }
-  return colorDodge(base, (blend - 128) * 2);
 }
 
 function blendLayer(baseData, layerData, opacity, mode) {
@@ -195,25 +350,6 @@ function blendLayer(baseData, layerData, opacity, mode) {
     base[i] = clampChannel(base[i] * (1 - alpha) + nextR * alpha);
     base[i + 1] = clampChannel(base[i + 1] * (1 - alpha) + nextG * alpha);
     base[i + 2] = clampChannel(base[i + 2] * (1 - alpha) + nextB * alpha);
-    base[i + 3] = 255;
-  }
-}
-
-function applyMaskLayer(baseData, layerData, maskData, opacity) {
-  const base = baseData.data;
-  const layer = layerData.data;
-  const mask = maskData.data;
-  const layerOpacity = Math.max(0, Math.min(1, opacity));
-
-  for (let i = 0; i < base.length; i += 4) {
-    const alpha = layerOpacity * (mask[i + 3] / 255);
-    if (alpha <= 0) {
-      continue;
-    }
-
-    base[i] = clampChannel(base[i] * (1 - alpha) + layer[i] * alpha);
-    base[i + 1] = clampChannel(base[i + 1] * (1 - alpha) + layer[i + 1] * alpha);
-    base[i + 2] = clampChannel(base[i + 2] * (1 - alpha) + layer[i + 2] * alpha);
     base[i + 3] = 255;
   }
 }
@@ -474,7 +610,7 @@ function renderPlaceholder() {
   const width = controls.previewCanvas.width;
   const height = controls.previewCanvas.height;
   previewContext.clearRect(0, 0, width, height);
-  previewContext.fillStyle = "#e8e0d5";
+  previewContext.fillStyle = "#f8f4ed";
   previewContext.fillRect(0, 0, width, height);
 }
 
@@ -497,36 +633,35 @@ function composeToCanvas(targetCanvas, includeGuide = false) {
 
   if (!state.baseImage) {
     ctx.clearRect(0, 0, width, height);
-    ctx.fillStyle = "#e8e0d5";
+    ctx.fillStyle = "#f8f4ed";
     ctx.fillRect(0, 0, width, height);
     return;
   }
 
   const bottomData = buildBlurredImageData(state.baseImage, width, height, controls.baseBlur.value);
   const topData = buildBlurredImageData(state.baseImage, width, height, controls.topBlur.value);
-  const composition = new ImageData(new Uint8ClampedArray(bottomData.data), width, height);
+  const composition = buildSolidImageData(width, height, BACKGROUND_COLOR);
   const baseOpacity = Number(controls.baseOpacity.value) / 100;
+  const topOpacity = Number(controls.topOpacity.value) / 100;
 
-  for (let i = 0; i < composition.data.length; i += 4) {
-    composition.data[i] = clampChannel(bottomData.data[i] * baseOpacity);
-    composition.data[i + 1] = clampChannel(bottomData.data[i + 1] * baseOpacity);
-    composition.data[i + 2] = clampChannel(bottomData.data[i + 2] * baseOpacity);
-    composition.data[i + 3] = 255;
-  }
+  blendNormal(composition, bottomData, baseOpacity);
 
   if (controls.useRainA.checked && state.rainAImage) {
     const rainAData = buildTextureData(state.rainAImage, width, height);
-    blendLayer(composition, rainAData, Number(controls.rainAOpacity.value) / 100, divideBlend);
+    blendLayer(composition, rainAData, Number(controls.rainAOpacity.value) / 100, softLightBlend);
   }
 
   if (controls.useRainB.checked && state.rainBImage) {
     const rainBData = buildTextureData(state.rainBImage, width, height);
-    blendLayer(composition, rainBData, Number(controls.rainBOpacity.value) / 100, vividLightBlend);
+    blendLayer(composition, rainBData, Number(controls.rainBOpacity.value) / 100, screenBlend);
   }
 
   const activeMask = buildActiveMask(width, height);
   if (activeMask?.maskData) {
-    applyMaskLayer(composition, topData, activeMask.maskData, Number(controls.topOpacity.value) / 100);
+    const revealComposition = buildSolidImageData(width, height, BACKGROUND_COLOR);
+    blendNormal(revealComposition, bottomData, baseOpacity);
+    blendNormal(revealComposition, topData, topOpacity);
+    applyMaskedReveal(composition, revealComposition, activeMask.maskData);
   }
 
   ctx.putImageData(composition, 0, 0);
@@ -874,27 +1009,48 @@ async function downloadResult() {
     return;
   }
 
-  setStatus("正在生成导出图。");
-  const exportCanvas = createCanvas(1500, 2000);
-  composeToCanvas(exportCanvas, false);
+  try {
+    setStatus("正在生成导出图。");
+    const exportCanvas = createCanvas(1500, 2000);
+    composeToCanvas(exportCanvas, false);
 
-  exportCanvas.toBlob((blob) => {
-    if (!blob) {
-      setStatus("导出失败。");
+    const blob = await canvasToBlob(exportCanvas, "image/png");
+    const fileName = buildExportFileName();
+    const shareResult = await tryShareImage(blob, fileName);
+
+    if (shareResult === "shared") {
+      setStatus("已打开系统保存面板。");
       return;
     }
 
-    const link = document.createElement("a");
-    const url = URL.createObjectURL(blob);
-    link.href = url;
-    link.download = "雨窗画写效果图.png";
-    link.click();
-    URL.revokeObjectURL(url);
-    setStatus("PNG 已导出。");
-  }, "image/png");
+    if (shareResult === "cancelled") {
+      setStatus("已取消保存。");
+      return;
+    }
+
+    const downloaded = triggerBlobDownload(blob, fileName);
+    if (downloaded) {
+      setStatus(
+        isTouchDevice()
+          ? "图片已生成。如未自动保存，请在新打开的图片页长按保存。"
+          : "PNG 已导出。",
+      );
+      return;
+    }
+
+    const opened = openBlobPreview(blob);
+    setStatus(opened ? "已打开图片，请长按或另存为。" : "导出失败，请重试。");
+  } catch (error) {
+    console.error(error);
+    setStatus("导出失败，请重试。");
+  }
 }
 
 function bindInputs() {
+  const triggerBackgroundUpload = () => {
+    controls.baseInput.click();
+  };
+
   controls.baseInput.addEventListener("change", (event) => {
     handleBaseChange(event).catch((error) => {
       console.error(error);
@@ -902,9 +1058,9 @@ function bindInputs() {
     });
   });
 
-  controls.previewUploadTrigger.addEventListener("click", () => {
-    controls.baseInput.click();
-  });
+  controls.previewUploadTrigger.addEventListener("click", triggerBackgroundUpload);
+  const replaceBackgroundButton = document.getElementById("replace-background-button");
+  replaceBackgroundButton?.addEventListener("click", triggerBackgroundUpload);
 
   controls.overlayInput.addEventListener("change", (event) => {
     handlePhotoOverlayChange(event).catch((error) => {
