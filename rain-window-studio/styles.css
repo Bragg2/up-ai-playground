@@ -88,6 +88,10 @@ button {
   border-radius: 0;
 }
 
+.preview-action-row {
+  display: grid;
+}
+
 .canvas-frame {
   position: relative;
   width: 100%;
@@ -276,6 +280,10 @@ button {
   border-radius: 18px;
   font-size: 1rem;
   font-weight: 700;
+}
+
+.preview-action-button {
+  min-height: 50px;
 }
 
 textarea {
