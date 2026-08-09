@@ -1,235 +1,153 @@
 <!doctype html>
 <html lang="zh-CN">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#f5f2eb" />
-    <title>雨窗画写</title>
-    <link rel="stylesheet" href="./styles.css?v=20260807f" />
-  </head>
-  <body>
-    <main class="app-shell">
-      <section class="app-card">
-        <input id="base-input" type="file" accept="image/*" hidden />
-        <input id="overlay-input" type="file" accept="image/*" hidden />
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#f7f7f7" />
+  <title>Rain Window Studio · 雨窗画画</title>
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <input id="bgInput" type="file" accept="image/*,.heic,.heif" hidden />
+  <input id="materialInput" type="file" accept="image/*,.heic,.heif" hidden />
 
-        <div class="sr-only" aria-live="polite">
-          <span id="status-text">请先上传背景图。</span>
+  <main class="app">
+    <section class="stage-column">
+      <div class="brand-row">
+        <div class="brand">
+          <h1>Rain Window Studio</h1>
+          <p>上传一张照片，在“湿玻璃”上画画、写字或放入素材。</p>
+        </div>
+        <button class="small-btn" id="changeBgBtn" type="button">更换照片</button>
+      </div>
+
+      <div class="stage-shell">
+        <div class="canvas-wrap" id="canvasWrap">
+          <canvas id="previewCanvas"></canvas>
+          <div class="empty-state" id="emptyState">
+            <div class="empty-card">
+              <div class="empty-plus">＋</div>
+              <div><strong>点击上传背景图</strong></div>
+              <div>支持手机照片；会自动限制超大图片尺寸</div>
+            </div>
+          </div>
+          <div class="interaction-hint" id="interactionHint">画笔：在画布上拖动</div>
         </div>
 
-        <section class="preview-card">
-          <div class="canvas-frame">
-            <canvas id="preview-canvas" width="1200" height="1600"></canvas>
-            <button id="preview-upload-trigger" class="preview-overlay" type="button">
-              <span>点击上传背景图</span>
-            </button>
-          </div>
-        </section>
-
-        <section class="preview-action-row">
-          <button id="replace-background-button" class="soft-action-button preview-action-button" type="button">
-            <span class="button-inner">
-              <span class="icon-svg" aria-hidden="true">
-                <svg viewBox="0 0 24 24">
-                  <path d="M12 16V5"></path>
-                  <path d="M8 9l4-4 4 4"></path>
-                  <path d="M5 19h14"></path>
-                </svg>
-              </span>
-              <span>更换背景图</span>
-            </span>
+        <div class="action-bar">
+          <button class="action-btn" id="undoBtn" type="button" disabled>
+            <svg viewBox="0 0 24 24"><path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5A5.5 5.5 0 0 1 14.5 20H11"/></svg>撤销
           </button>
-        </section>
-
-        <section class="toolbar-row">
-          <div class="toolbar-group">
-            <button id="undo-button" class="toolbar-button" type="button">
-              <span class="button-inner">
-                <span class="icon-svg" aria-hidden="true">
-                  <svg viewBox="0 0 24 24">
-                    <path d="M9 14L4 9l5-5"></path>
-                    <path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5v0a5.5 5.5 0 0 1-5.5 5.5H11"></path>
-                  </svg>
-                </span>
-                <span>撤销</span>
-              </span>
-            </button>
-
-            <button id="redo-button" class="toolbar-button" type="button">
-              <span class="button-inner">
-                <span class="icon-svg" aria-hidden="true">
-                  <svg viewBox="0 0 24 24">
-                    <path d="M15 14l5-5-5-5"></path>
-                    <path d="M20 9H9.5A5.5 5.5 0 0 0 4 14.5v0A5.5 5.5 0 0 0 9.5 20H13"></path>
-                  </svg>
-                </span>
-                <span>重做</span>
-              </span>
-            </button>
-          </div>
-
-          <button id="clear-button" class="toolbar-button clear-button" type="button">
-            <span class="button-inner">
-              <span class="icon-svg" aria-hidden="true">
-                <svg style="stroke: #d9534f" viewBox="0 0 24 24">
-                  <path d="M3 6h18"></path>
-                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                </svg>
-              </span>
-              <span>清空</span>
-            </span>
+          <button class="action-btn" id="redoBtn" type="button" disabled>
+            <svg viewBox="0 0 24 24"><path d="M15 14l5-5-5-5"/><path d="M20 9H9.5A5.5 5.5 0 0 0 4 14.5 5.5 5.5 0 0 0 9.5 20H13"/></svg>重做
           </button>
-        </section>
-
-        <section class="control-section">
-          <div class="segment-row">
-            <button class="segment-button is-active" data-mode="photo" type="button">素材图</button>
-            <button class="segment-button" data-mode="brush" type="button">画笔</button>
-            <button class="segment-button" data-mode="text" type="button">文字</button>
-          </div>
-
-          <div class="panel-stack">
-            <section class="control-panel is-active" data-mode-panel="photo">
-              <button id="overlay-upload-button" class="soft-action-button" type="button">
-                <span class="button-inner">
-                  <span class="icon-svg" aria-hidden="true">
-                    <svg viewBox="0 0 24 24">
-                      <path d="M12 16V5"></path>
-                      <path d="M8 9l4-4 4 4"></path>
-                      <path d="M5 19h14"></path>
-                    </svg>
-                  </span>
-                  <span id="overlay-trigger-text">上传素材图</span>
-                </span>
-              </button>
-
-              <label class="field-block">
-                <div class="field-head">
-                  <span>素材大小</span>
-                  <output id="photo-size-value">50%</output>
-                </div>
-                <input id="photo-size" type="range" min="20" max="180" value="50" />
-              </label>
-            </section>
-
-            <section class="control-panel" data-mode-panel="brush">
-              <label class="field-block">
-                <div class="field-head">
-                  <span>画笔大小</span>
-                  <output id="brush-size-value">12px</output>
-                </div>
-                <input id="brush-size" type="range" min="2" max="40" value="12" />
-              </label>
-            </section>
-
-            <section class="control-panel" data-mode-panel="text">
-              <label class="field-block">
-                <span class="field-label">输入文字</span>
-                <textarea id="text-input" rows="3"></textarea>
-              </label>
-
-              <label class="field-block">
-                <div class="field-head">
-                  <span>文字大小</span>
-                  <output id="text-size-value">48px</output>
-                </div>
-                <input id="text-size" type="range" min="20" max="120" value="48" />
-              </label>
-            </section>
-          </div>
-        </section>
-
-        <section class="control-section">
-          <div class="segment-row">
-            <button class="segment-button is-active" data-layer="top" type="button">顶图</button>
-            <button class="segment-button" data-layer="bottom" type="button">底图</button>
-            <button class="segment-button" data-layer="rain" type="button">雨滴层</button>
-          </div>
-
-          <div class="panel-stack">
-            <section class="control-panel is-active" data-layer-panel="top">
-              <label class="field-block">
-                <div class="field-head">
-                  <span>顶图模糊</span>
-                  <output id="top-blur-value">4px</output>
-                </div>
-                <input id="top-blur" type="range" min="0" max="20" value="4" />
-              </label>
-
-              <label class="field-block">
-                <div class="field-head">
-                  <span>顶图透明度</span>
-                  <output id="top-opacity-value">80%</output>
-                </div>
-                <input id="top-opacity" type="range" min="0" max="100" value="80" />
-              </label>
-            </section>
-
-            <section class="control-panel" data-layer-panel="bottom">
-              <label class="field-block">
-                <div class="field-head">
-                  <span>底图模糊</span>
-                  <output id="base-blur-value">18px</output>
-                </div>
-                <input id="base-blur" type="range" min="0" max="40" value="18" />
-              </label>
-
-              <label class="field-block">
-                <div class="field-head">
-                  <span>底图透明度</span>
-                  <output id="base-opacity-value">70%</output>
-                </div>
-                <input id="base-opacity" type="range" min="0" max="100" value="70" />
-              </label>
-            </section>
-
-            <section class="control-panel" data-layer-panel="rain">
-              <label class="check-row">
-                <span>启用雨滴 A</span>
-                <input id="use-rain-a" type="checkbox" checked />
-              </label>
-
-              <label class="field-block">
-                <div class="field-head">
-                  <span>雨滴 A 透明度</span>
-                  <output id="rain-a-opacity-value">67%</output>
-                </div>
-                <input id="rain-a-opacity" type="range" min="0" max="100" value="67" />
-              </label>
-
-              <label class="check-row">
-                <span>启用雨滴 B</span>
-                <input id="use-rain-b" type="checkbox" checked />
-              </label>
-
-              <label class="field-block">
-                <div class="field-head">
-                  <span>雨滴 B 透明度</span>
-                  <output id="rain-b-opacity-value">100%</output>
-                </div>
-                <input id="rain-b-opacity" type="range" min="0" max="100" value="100" />
-              </label>
-            </section>
-          </div>
-        </section>
-
-        <footer class="footer-row">
-          <button id="download-button" class="download-button" type="button">
-            <span class="button-inner">
-              <span class="icon-svg" aria-hidden="true">
-                <svg viewBox="0 0 24 24">
-                  <path d="M12 5v10"></path>
-                  <path d="M8 12l4 4 4-4"></path>
-                  <path d="M5 19h14"></path>
-                </svg>
-              </span>
-              <span>导出 PNG</span>
-            </span>
+          <button class="action-btn danger" id="clearBtn" type="button">
+            <svg viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>清空当前
           </button>
-        </footer>
-      </section>
-    </main>
+        </div>
+      </div>
+    </section>
 
-    <script type="module" src="./app.js?v=20260807f"></script>
-  </body>
+    <section class="controls-column">
+      <div class="tabs" id="contentTabs">
+        <button class="tab active" data-mode="material" type="button">素材图</button>
+        <button class="tab" data-mode="brush" type="button">画笔</button>
+      </div>
+
+      <div class="panel-card">
+        <div class="panel active" data-panel="material">
+          <button class="primary" id="uploadMaterialBtn" type="button">上传素材图</button>
+          <div class="control">
+            <div class="control-head"><span>素材大小</span><span id="materialScaleVal">50%</span></div>
+            <input id="materialScale" type="range" min="10" max="160" value="50" />
+          </div>
+          <div class="toggle-line">
+            <span>白底自动转透明</span>
+            <label class="switch"><input id="removeWhite" type="checkbox" checked /><i></i></label>
+          </div>
+          <p class="helper">透明 PNG 效果最好；普通白底图片也可以尝试开启“白底自动转透明”。上传后可直接拖动位置。</p>
+        </div>
+
+        <div class="panel" data-panel="brush">
+          <div class="control">
+            <div class="control-head"><span>画笔大小</span><span id="brushSizeVal">34px</span></div>
+            <input id="brushSize" type="range" min="6" max="140" value="34" />
+          </div>
+          <div class="control brush-soft-control">
+            <div class="control-head"><span>边缘柔化</span><span id="brushSoftVal">22%</span></div>
+            <input id="brushSoft" type="range" min="0" max="70" value="22" />
+          </div>
+          <div class="brush-actions-host" id="brushActionHost"></div>
+          <p class="helper">画笔不是“画颜色”，而是在湿玻璃上生成一张擦除蒙版。</p>
+        </div>
+
+      <div class="tabs" id="layerTabs">
+        <button class="tab active" data-layer="top" type="button">顶图</button>
+        <button class="tab" data-layer="bottom" type="button">底图</button>
+        <button class="tab" data-layer="rain" type="button">雨滴层</button>
+      </div>
+
+      <div class="panel-card">
+        <div class="panel active" data-layer-panel="top">
+          <div class="control">
+            <div class="control-head"><span>顶图模糊</span><span id="topBlurVal">1px</span></div>
+            <input id="topBlur" type="range" min="0" max="40" value="1" />
+          </div>
+          <div class="control">
+            <div class="control-head"><span>顶图透明度</span><span id="topOpacityVal">100%</span></div>
+            <input id="topOpacity" type="range" min="0" max="100" value="100" />
+          </div>
+          <p class="helper">顶图只通过当前选择的“素材图 / 画笔”其中一种蒙版露出，两种模式不会叠加。</p>
+        </div>
+
+        <div class="panel" data-layer-panel="bottom">
+          <div class="control">
+            <div class="control-head"><span>底图模糊</span><span id="bottomBlurVal">14px</span></div>
+            <input id="bottomBlur" type="range" min="0" max="60" value="14" />
+          </div>
+          <div class="control">
+            <div class="control-head"><span>底图透明度</span><span id="bottomOpacityVal">93%</span></div>
+            <input id="bottomOpacity" type="range" min="25" max="100" value="93" />
+          </div>
+          <div class="control">
+            <div class="control-head"><span>雾气强度</span><span id="fogVal">18%</span></div>
+            <input id="fog" type="range" min="0" max="55" value="18" />
+          </div>
+        </div>
+
+        <div class="panel" data-layer-panel="rain">
+          <div class="toggle-line">
+            <span>启用雨滴 A · 大水珠</span>
+            <label class="switch"><input id="rainAEnabled" type="checkbox" checked /><i></i></label>
+          </div>
+          <div class="control">
+            <div class="control-head"><span>大水珠透明度</span><span id="rainAVal">86%</span></div>
+            <input id="rainA" type="range" min="0" max="100" value="86" />
+          </div>
+          <div class="divider"></div>
+          <div class="toggle-line">
+            <span>启用雨滴 B · 细雨珠</span>
+            <label class="switch"><input id="rainBEnabled" type="checkbox" checked /><i></i></label>
+          </div>
+          <div class="control">
+            <div class="control-head"><span>细雨珠透明度</span><span id="rainBVal">100%</span></div>
+            <input id="rainB" type="range" min="0" max="100" value="100" />
+          </div>
+          <p class="helper">两层雨滴使用真实纹理叠加；透明度 0–100% 会连续变化。</p>
+        </div>
+      </div>
+
+      <div class="status" id="statusText">未上传背景图</div>
+
+      <div class="footer-actions">
+        <button class="secondary" id="resetLookBtn" type="button">恢复推荐参数</button>
+        <button class="primary" id="exportBtn" type="button">导出 PNG</button>
+      </div>
+    </section>
+  </main>
+
+  <div class="toast" id="toast"></div>
+
+  <script src="./script.js"></script>
+</body>
 </html>
