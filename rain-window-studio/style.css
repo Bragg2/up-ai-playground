@@ -200,6 +200,18 @@
       border: 1px solid rgba(0,0,0,.025);
       margin-bottom: 16px;
     }
+
+    /* Desktop: keep the content controls and layer controls as two clearly
+       separated cards. This also gives both material and brush modes the same rhythm. */
+    @media (min-width: 821px) {
+      #contentTabs + .panel-card {
+        margin-bottom: 24px;
+      }
+      #layerTabs {
+        margin-top: 0;
+      }
+    }
+
     .panel { display: none; gap: 16px; flex-direction: column; }
     .panel.active { display: flex; }
     .control { display: flex; flex-direction: column; gap: 8px; }
