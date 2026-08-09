@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#f7f7f7" />
+  <title>Rain Window Studio · 雨窗画画</title>
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <input id="bgInput" type="file" accept="image/*,.heic,.heif" hidden />
+  <input id="materialInput" type="file" accept="image/*,.heic,.heif" hidden />
+
+  <main class="app">
+    <section class="stage-column">
+      <div class="brand-row">
+        <div class="brand">
+          <h1>Rain Window Studio</h1>
+          <p>上传一张照片，在“湿玻璃”上画画、写字或放入素材。</p>
+        </div>
+        <button class="small-btn" id="changeBgBtn" type="button">更换照片</button>
+      </div>
+
+      <div class="stage-shell">
+        <div class="canvas-wrap" id="canvasWrap">
+          <canvas id="previewCanvas"></canvas>
+          <div class="empty-state" id="emptyState">
+            <div class="empty-card">
+              <div class="empty-plus">＋</div>
+              <div><strong>点击上传背景图</strong></div>
+              <div>支持手机照片；会自动限制超大图片尺寸</div>
+            </div>
+          </div>
+          <div class="interaction-hint" id="interactionHint">画笔：在画布上拖动</div>
+        </div>
+
+        <div class="action-bar">
+          <button class="action-btn" id="undoBtn" type="button" disabled>
+            <svg viewBox="0 0 24 24"><path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5A5.5 5.5 0 0 1 14.5 20H11"/></svg>撤销
+          </button>
+          <button class="action-btn" id="redoBtn" type="button" disabled>
+            <svg viewBox="0 0 24 24"><path d="M15 14l5-5-5-5"/><path d="M20 9H9.5A5.5 5.5 0 0 0 4 14.5 5.5 5.5 0 0 0 9.5 20H13"/></svg>重做
+          </button>
+          <button class="action-btn danger" id="clearBtn" type="button">
+            <svg viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>清空当前
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <section class="controls-column">
+      <div class="tabs" id="contentTabs">
+        <button class="tab active" data-mode="material" type="button">素材图</button>
+        <button class="tab" data-mode="brush" type="button">画笔</button>
+      </div>
+
+      <div class="panel-card">
+        <div class="panel active" data-panel="material">
+          <button class="primary" id="uploadMaterialBtn" type="button">上传素材图</button>
+          <div class="control">
+            <div class="control-head"><span>素材大小</span><span id="materialScaleVal">50%</span></div>
+            <input id="materialScale" type="range" min="10" max="160" value="50" />
+          </div>
+          <div class="toggle-line">
+            <span>白底自动转透明</span>
+            <label class="switch"><input id="removeWhite" type="checkbox" checked /><i></i></label>
+          </div>
+          <p class="helper">透明 PNG 效果最好；普通白底图片也可以尝试开启“白底自动转透明”。上传后可直接拖动位置。</p>
+        </div>
+
+        <div class="panel" data-panel="brush">
+          <div class="control">
+            <div class="control-head"><span>画笔大小</span><span id="brushSizeVal">34px</span></div>
+            <input id="brushSize" type="range" min="6" max="140" value="34" />
+          </div>
+          <div class="control brush-soft-control">
+            <div class="control-head"><span>边缘柔化</span><span id="brushSoftVal">22%</span></div>
+            <input id="brushSoft" type="range" min="0" max="70" value="22" />
+          </div>
+          <div class="brush-actions-host" id="brushActionHost"></div>
+          <p class="helper">画笔不是“画颜色”，而是在湿玻璃上生成一张擦除蒙版。</p>
+        </div>
+
+      <div class="tabs" id="layerTabs">
+        <button class="tab active" data-layer="top" type="button">顶图</button>
+        <button class="tab" data-layer="bottom" type="button">底图</button>
+        <button class="tab" data-layer="rain" type="button">雨滴层</button>
+      </div>
+
+      <div class="panel-card">
+        <div class="panel active" data-layer-panel="top">
+          <div class="control">
+            <div class="control-head"><span>顶图模糊</span><span id="topBlurVal">1px</span></div>
+            <input id="topBlur" type="range" min="0" max="40" value="1" />
+          </div>
+          <div class="control">
+            <div class="control-head"><span>顶图透明度</span><span id="topOpacityVal">100%</span></div>
+            <input id="topOpacity" type="range" min="0" max="100" value="100" />
+          </div>
+          <p class="helper">顶图只通过当前选择的“素材图 / 画笔”其中一种蒙版露出，两种模式不会叠加。</p>
+        </div>
+
+        <div class="panel" data-layer-panel="bottom">
+          <div class="control">
+            <div class="control-head"><span>底图模糊</span><span id="bottomBlurVal">14px</span></div>
+            <input id="bottomBlur" type="range" min="0" max="60" value="14" />
+          </div>
+          <div class="control">
+            <div class="control-head"><span>底图透明度</span><span id="bottomOpacityVal">93%</span></div>
+            <input id="bottomOpacity" type="range" min="25" max="100" value="93" />
+          </div>
+          <div class="control">
+            <div class="control-head"><span>雾气强度</span><span id="fogVal">18%</span></div>
+            <input id="fog" type="range" min="0" max="55" value="18" />
+          </div>
+        </div>
+
+        <div class="panel" data-layer-panel="rain">
+          <div class="toggle-line">
+            <span>启用雨滴 A · 大水珠</span>
+            <label class="switch"><input id="rainAEnabled" type="checkbox" checked /><i></i></label>
+          </div>
+          <div class="control">
+            <div class="control-head"><span>大水珠透明度</span><span id="rainAVal">86%</span></div>
+            <input id="rainA" type="range" min="0" max="100" value="86" />
+          </div>
+          <div class="divider"></div>
+          <div class="toggle-line">
+            <span>启用雨滴 B · 细雨珠</span>
+            <label class="switch"><input id="rainBEnabled" type="checkbox" checked /><i></i></label>
+          </div>
+          <div class="control">
+            <div class="control-head"><span>细雨珠透明度</span><span id="rainBVal">100%</span></div>
+            <input id="rainB" type="range" min="0" max="100" value="100" />
+          </div>
+          <p class="helper">两层雨滴使用真实纹理叠加；透明度 0–100% 会连续变化。</p>
+        </div>
+      </div>
+
+      <div class="status" id="statusText">未上传背景图</div>
+
+      <div class="footer-actions">
+        <button class="secondary" id="resetLookBtn" type="button">恢复推荐参数</button>
+        <button class="primary" id="exportBtn" type="button">导出 PNG</button>
+      </div>
+    </section>
+  </main>
+
+  <div class="toast" id="toast"></div>
+
+  <script src="./script.js"></script>
+</body>
+</html>
